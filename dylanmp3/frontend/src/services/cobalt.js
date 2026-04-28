@@ -1,4 +1,13 @@
-const COBALT_API = "https://co.wuk.sh/api/json";
+// Endpoint primario → fallback si falla por CORS o red
+const ENDPOINTS = [
+  "https://cobalt.tools/api/json",
+  "https://api.cobalt.tools/",
+];
+
+const HEADERS = {
+  "Accept": "application/json",
+  "Content-Type": "application/json",
+};
 
 const FRIENDLY_ERRORS = {
   "error.content.video.unavailable": "El video no está disponible o fue eliminado.",
@@ -15,9 +24,40 @@ const FRIENDLY_ERRORS = {
 };
 
 /**
+ * Intenta la petición contra cada endpoint en orden.
+ * Pasa al siguiente si el anterior lanza un error de red/CORS (TypeError).
+ */
+async function fetchWithFallback(body) {
+  let lastError;
+
+  for (const endpoint of ENDPOINTS) {
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      return await res.json();
+    } catch (err) {
+      lastError = err;
+      // TypeError = error de red o CORS → probar el siguiente endpoint
+      // Cualquier otro error (HTTP 4xx/5xx) también prueba el siguiente
+      continue;
+    }
+  }
+
+  throw lastError;
+}
+
+/**
  * Llama a la API de cobalt.tools para obtener la URL de descarga.
  * @param {Object} params
- * @param {string} params.url - URL de YouTube
+ * @param {string} params.url     - URL de YouTube
  * @param {"mp4"|"mp3"} params.format
  * @param {"1080"|"480"|"best"} params.quality
  * @returns {Promise<{ status: "stream"|"picker", url?: string, picker?: Array }>}
@@ -25,13 +65,9 @@ const FRIENDLY_ERRORS = {
 export async function cobaltDownload({ url, format, quality }) {
   const isAudioOnly = format === "mp3";
 
-  const res = await fetch(COBALT_API, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({
+  let data;
+  try {
+    data = await fetchWithFallback({
       url,
       vCodec: "h264",
       vQuality: isAudioOnly ? "720" : quality,
@@ -39,18 +75,17 @@ export async function cobaltDownload({ url, format, quality }) {
       isAudioOnly,
       isNoTTWatermark: true,
       filenamePattern: "classic",
-    }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Error del servidor (${res.status}). Intenta de nuevo en unos segundos.`);
+    });
+  } catch {
+    throw new Error(
+      "No se pudo conectar con el servicio de descarga. Verifica tu conexión e intenta de nuevo."
+    );
   }
 
-  const data = await res.json();
-
   if (data.status === "error") {
-    const friendly = FRIENDLY_ERRORS[data.text]
-      ?? "No se pudo procesar el video. Verifica el enlace e intenta de nuevo.";
+    const friendly =
+      FRIENDLY_ERRORS[data.text] ??
+      "No se pudo procesar el video. Verifica el enlace e intenta de nuevo.";
     throw new Error(friendly);
   }
 
