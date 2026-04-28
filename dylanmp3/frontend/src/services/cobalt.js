@@ -1,8 +1,5 @@
-// Endpoint primario → fallback si falla por CORS o red
-const ENDPOINTS = [
-  "https://cobalt.tools/api/json",
-  "https://api.cobalt.tools/",
-];
+// Proxy serverless en Vercel — mismo dominio, sin CORS
+const ENDPOINTS = ["/api/cobalt"];
 
 const HEADERS = {
   "Accept": "application/json",

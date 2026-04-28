@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: vidsnap-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vidsnap-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - REDIS_URL=redis://redis:6379
+      - FRONTEND_URL=http://localhost:5173
+      - MAX_REQUESTS_PER_IP=5
+      - RATE_LIMIT_WINDOW_MINUTES=15
+      - DOWNLOAD_TTL_MINUTES=30
+      - YTDLP_PATH=yt-dlp
+    volumes:
+      - ./backend/downloads:/app/downloads
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: vidsnap-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
