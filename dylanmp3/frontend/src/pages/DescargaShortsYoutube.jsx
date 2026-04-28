@@ -3,47 +3,60 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import UrlInput from "../components/UrlInput";
 import FormatSelector from "../components/FormatSelector";
-import ResultCard from "../components/ResultCard";
+import PickerCard from "../components/ResultCard";
 import Interstitial from "../components/Interstitial";
 import Footer from "../components/Footer";
-
-const API_BASE = import.meta.env.VITE_API_URL || "";
+import { cobaltDownload } from "../services/cobalt";
 
 export default function DescargaShortsYoutube() {
   const [url, setUrl] = useState("");
   const [urlValid, setUrlValid] = useState(false);
   const [selectedOption, setSelectedOption] = useState(null);
-  const [jobId, setJobId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [interstitial, setInterstitial] = useState(null);
+  const [pickerItems, setPickerItems] = useState(null);
+
+  const reset = () => { setError(null); setInterstitial(null); setPickerItems(null); };
 
   const handleUrlChange = (newUrl, valid) => {
     setUrl(newUrl);
     setUrlValid(valid);
-    if (jobId) { setJobId(null); setError(null); }
+    reset();
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!urlValid || !selectedOption) return;
+
     setLoading(true);
-    setError(null);
-    setJobId(null);
+    reset();
+
     try {
-      const res = await fetch(`${API_BASE}/api/process`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, format: selectedOption.format, quality: selectedOption.quality }),
+      const data = await cobaltDownload({
+        url,
+        format: selectedOption.format,
+        quality: selectedOption.quality,
       });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || "Error al iniciar la descarga."); return; }
-      setJobId(data.jobId);
-    } catch {
-      setError("No se pudo conectar con el servidor.");
+
+      if (data.status === "stream") {
+        setInterstitial({ downloadUrl: data.url });
+      } else if (data.status === "picker") {
+        setPickerItems(data.picker);
+      }
+    } catch (err) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleClose = () => {
+    setInterstitial(null);
+    setPickerItems(null);
+    setUrl("");
+    setUrlValid(false);
+    setSelectedOption(null);
   };
 
   return (
@@ -81,7 +94,7 @@ export default function DescargaShortsYoutube() {
               </div>
               <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight">
                 Descargar{" "}
-                <span className="text-transparent bg-clip-text gradient-red">Shorts de YouTube</span>{" "}
+                <span className="text-transparent bg-clip-text gradient-red-text">Shorts de YouTube</span>{" "}
                 Gratis
               </h1>
               <p className="text-white/50 leading-relaxed">
@@ -90,10 +103,10 @@ export default function DescargaShortsYoutube() {
               </p>
             </div>
 
-            {/* Info sobre URLs de Shorts */}
             <div className="bg-card border border-white/10 rounded-xl px-5 py-4 flex items-start gap-3">
               <svg className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div className="text-sm text-white/50">
                 <p className="font-medium text-white/80 mb-1">¿Cómo obtener el enlace de un Short?</p>
@@ -123,14 +136,10 @@ export default function DescargaShortsYoutube() {
               </button>
             </form>
 
-            {jobId && (
-              <ResultCard
-                jobId={jobId}
-                onReadyToDownload={(jid, fname) => setInterstitial({ jobId: jid, filename: fname })}
-              />
+            {pickerItems && (
+              <PickerCard items={pickerItems} onClose={() => setPickerItems(null)} />
             )}
 
-            {/* H2 + pasos SEO */}
             <div className="space-y-6 pt-4 border-t border-white/5">
               <h2 className="text-xl font-bold">¿Cómo descargar un Short de YouTube?</h2>
               <ol className="space-y-4">
@@ -158,11 +167,7 @@ export default function DescargaShortsYoutube() {
         <Footer />
 
         {interstitial && (
-          <Interstitial
-            jobId={interstitial.jobId}
-            filename={interstitial.filename}
-            onClose={() => { setInterstitial(null); setJobId(null); setUrl(""); setUrlValid(false); setSelectedOption(null); }}
-          />
+          <Interstitial downloadUrl={interstitial.downloadUrl} onClose={handleClose} />
         )}
       </div>
     </>

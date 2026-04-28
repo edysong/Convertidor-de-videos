@@ -3,27 +3,32 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import UrlInput from "../components/UrlInput";
 import FormatSelector from "../components/FormatSelector";
-import ResultCard from "../components/ResultCard";
+import PickerCard from "../components/ResultCard";
 import Interstitial from "../components/Interstitial";
 import HowItWorks from "../components/HowItWorks";
 import FAQ from "../components/FAQ";
 import Footer from "../components/Footer";
-
-const API_BASE = import.meta.env.VITE_API_URL || "";
+import { cobaltDownload } from "../services/cobalt";
 
 export default function Home() {
   const [url, setUrl] = useState("");
   const [urlValid, setUrlValid] = useState(false);
   const [selectedOption, setSelectedOption] = useState(null);
-  const [jobId, setJobId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [interstitial, setInterstitial] = useState(null);
+  const [interstitial, setInterstitial] = useState(null); // { downloadUrl }
+  const [pickerItems, setPickerItems] = useState(null);   // array de streams
+
+  const reset = () => {
+    setError(null);
+    setInterstitial(null);
+    setPickerItems(null);
+  };
 
   const handleUrlChange = (newUrl, valid) => {
     setUrl(newUrl);
     setUrlValid(valid);
-    if (jobId) { setJobId(null); setError(null); }
+    reset();
   };
 
   const handleSubmit = async (e) => {
@@ -31,23 +36,33 @@ export default function Home() {
     if (!urlValid || !selectedOption) return;
 
     setLoading(true);
-    setError(null);
-    setJobId(null);
+    reset();
 
     try {
-      const res = await fetch(`${API_BASE}/api/process`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, format: selectedOption.format, quality: selectedOption.quality }),
+      const data = await cobaltDownload({
+        url,
+        format: selectedOption.format,
+        quality: selectedOption.quality,
       });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || "Error al iniciar la descarga."); return; }
-      setJobId(data.jobId);
-    } catch {
-      setError("No se pudo conectar con el servidor.");
+
+      if (data.status === "stream") {
+        setInterstitial({ downloadUrl: data.url });
+      } else if (data.status === "picker") {
+        setPickerItems(data.picker);
+      }
+    } catch (err) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleClose = () => {
+    setInterstitial(null);
+    setPickerItems(null);
+    setUrl("");
+    setUrlValid(false);
+    setSelectedOption(null);
   };
 
   return (
@@ -60,7 +75,6 @@ export default function Home() {
       </Helmet>
 
       <div className="min-h-screen flex flex-col">
-        {/* Header */}
         <header className="border-b border-white/5 py-4 px-6 sticky top-0 bg-bg/95 backdrop-blur z-40">
           <div className="max-w-3xl mx-auto flex items-center justify-between">
             <Link to="/" className="flex items-center gap-2">
@@ -78,7 +92,6 @@ export default function Home() {
           </div>
         </header>
 
-        {/* Hero + formulario */}
         <main className="flex-1">
           <section className="px-4 py-14">
             <div className="max-w-2xl mx-auto space-y-8">
@@ -89,7 +102,7 @@ export default function Home() {
                 </div>
                 <h1 className="text-4xl sm:text-5xl font-extrabold leading-tight">
                   Descarga{" "}
-                  <span className="text-transparent bg-clip-text gradient-red">YouTube</span>{" "}
+                  <span className="text-transparent bg-clip-text gradient-red-text">YouTube</span>{" "}
                   a MP3 y MP4
                 </h1>
                 <p className="text-white/50 text-base max-w-md mx-auto">
@@ -128,14 +141,11 @@ export default function Home() {
                 </button>
               </form>
 
-              {jobId && (
-                <ResultCard
-                  jobId={jobId}
-                  onReadyToDownload={(jid, fname) => setInterstitial({ jobId: jid, filename: fname })}
-                />
+              {/* Picker: cobalt devolvió múltiples streams */}
+              {pickerItems && (
+                <PickerCard items={pickerItems} onClose={() => setPickerItems(null)} />
               )}
 
-              {/* Links internos para SEO */}
               <div className="flex flex-wrap justify-center gap-3 pt-2">
                 <Link
                   to="/youtube-a-mp3"
@@ -161,15 +171,8 @@ export default function Home() {
 
         {interstitial && (
           <Interstitial
-            jobId={interstitial.jobId}
-            filename={interstitial.filename}
-            onClose={() => {
-              setInterstitial(null);
-              setJobId(null);
-              setUrl("");
-              setUrlValid(false);
-              setSelectedOption(null);
-            }}
+            downloadUrl={interstitial.downloadUrl}
+            onClose={handleClose}
           />
         )}
       </div>

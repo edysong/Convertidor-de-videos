@@ -17,6 +17,10 @@
   .gradient-red {
     background: linear-gradient(135deg, #ff0000 0%, #ff4444 100%);
   }
+  /* Solo para texto: usa background-image para no resetear background-clip: text */
+  .gradient-red-text {
+    background-image: linear-gradient(135deg, #ff0000 0%, #ff4444 100%);
+  }
   .glow-red {
     box-shadow: 0 0 24px rgba(255, 0, 0, 0.35);
   }

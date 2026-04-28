@@ -3,50 +3,57 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import UrlInput from "../components/UrlInput";
 import FormatSelector from "../components/FormatSelector";
-import ResultCard from "../components/ResultCard";
+import PickerCard from "../components/ResultCard";
 import Interstitial from "../components/Interstitial";
 import Footer from "../components/Footer";
+import { cobaltDownload } from "../services/cobalt";
 
-const API_BASE = import.meta.env.VITE_API_URL || "";
-
-// Preset MP3 ya seleccionado
 const MP3_OPTION = { id: "mp3-best", format: "mp3", quality: "best" };
 
 export default function YoutubeAMp3() {
   const [url, setUrl] = useState("");
   const [urlValid, setUrlValid] = useState(false);
-  const [selectedOption, setSelectedOption] = useState(MP3_OPTION);
-  const [jobId, setJobId] = useState(null);
+  const [selectedOption] = useState(MP3_OPTION);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [interstitial, setInterstitial] = useState(null);
+  const [pickerItems, setPickerItems] = useState(null);
+
+  const reset = () => { setError(null); setInterstitial(null); setPickerItems(null); };
 
   const handleUrlChange = (newUrl, valid) => {
     setUrl(newUrl);
     setUrlValid(valid);
-    if (jobId) { setJobId(null); setError(null); }
+    reset();
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!urlValid) return;
+
     setLoading(true);
-    setError(null);
-    setJobId(null);
+    reset();
+
     try {
-      const res = await fetch(`${API_BASE}/api/process`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, format: "mp3", quality: "best" }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || "Error al iniciar la descarga."); return; }
-      setJobId(data.jobId);
-    } catch {
-      setError("No se pudo conectar con el servidor.");
+      const data = await cobaltDownload({ url, format: "mp3", quality: "best" });
+
+      if (data.status === "stream") {
+        setInterstitial({ downloadUrl: data.url });
+      } else if (data.status === "picker") {
+        setPickerItems(data.picker);
+      }
+    } catch (err) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleClose = () => {
+    setInterstitial(null);
+    setPickerItems(null);
+    setUrl("");
+    setUrlValid(false);
   };
 
   return (
@@ -78,11 +85,10 @@ export default function YoutubeAMp3() {
 
         <main className="flex-1 px-4 py-14">
           <div className="max-w-2xl mx-auto space-y-10">
-            {/* H1 + introducción */}
             <div className="space-y-4">
               <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight">
                 Convertidor de{" "}
-                <span className="text-transparent bg-clip-text gradient-red">YouTube a MP3</span>{" "}
+                <span className="text-transparent bg-clip-text gradient-red-text">YouTube a MP3</span>{" "}
                 Gratis
               </h1>
               <p className="text-white/50 leading-relaxed">
@@ -91,12 +97,11 @@ export default function YoutubeAMp3() {
               </p>
             </div>
 
-            {/* Formulario — sólo MP3 */}
             <form onSubmit={handleSubmit} className="space-y-4">
               <UrlInput onUrlChange={handleUrlChange} />
               <FormatSelector
                 selected={selectedOption}
-                onChange={setSelectedOption}
+                onChange={() => {}}
                 forcedFormat="mp3"
               />
               {error && (
@@ -113,18 +118,14 @@ export default function YoutubeAMp3() {
                     : "bg-white/5 text-white/20 cursor-not-allowed"
                   }`}
               >
-                {loading ? "Procesando..." : "Convertir a MP3 gratis"}
+                {loading ? "Convirtiendo..." : "Convertir a MP3 gratis"}
               </button>
             </form>
 
-            {jobId && (
-              <ResultCard
-                jobId={jobId}
-                onReadyToDownload={(jid, fname) => setInterstitial({ jobId: jid, filename: fname })}
-              />
+            {pickerItems && (
+              <PickerCard items={pickerItems} onClose={() => setPickerItems(null)} />
             )}
 
-            {/* H2 + pasos SEO */}
             <div className="space-y-6 pt-4 border-t border-white/5">
               <h2 className="text-xl font-bold">¿Cómo convertir YouTube a MP3?</h2>
               <ol className="space-y-4">
@@ -152,11 +153,7 @@ export default function YoutubeAMp3() {
         <Footer />
 
         {interstitial && (
-          <Interstitial
-            jobId={interstitial.jobId}
-            filename={interstitial.filename}
-            onClose={() => { setInterstitial(null); setJobId(null); setUrl(""); setUrlValid(false); }}
-          />
+          <Interstitial downloadUrl={interstitial.downloadUrl} onClose={handleClose} />
         )}
       </div>
     </>
