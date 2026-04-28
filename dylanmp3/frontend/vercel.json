@@ -1,9 +1,4 @@
 {
-  "functions": {
-    "api/cobalt.js": {
-      "runtime": "nodejs18.x"
-    }
-  },
   "rewrites": [
     {
       "source": "/api/cobalt",
